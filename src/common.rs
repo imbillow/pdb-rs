@@ -685,7 +685,7 @@ impl_pread!(Register);
 
 /// Provides little-endian access to a &[u8].
 #[derive(Debug, Default, Clone)]
-pub(crate) struct ParseBuffer<'b>(&'b [u8], usize);
+pub struct ParseBuffer<'b>(&'b [u8], usize);
 
 macro_rules! def_parse {
     ( $( ($n:ident, $t:ty) ),* $(,)* ) => {

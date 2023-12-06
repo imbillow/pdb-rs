@@ -430,6 +430,8 @@ pub(crate) fn parse_type_data<'t>(buf: &mut ParseBuffer<'t>) -> Result<TypeData<
                         // continuation record
                         // eat the leaf value
                         buf.parse_u16()?;
+                        let pad0 = buf.parse_u16()?;
+                        assert_eq!(pad0, 0);
 
                         // parse the TypeIndex where we continue
                         continuation = Some(buf.parse()?);
@@ -561,6 +563,7 @@ unsigned short  mocom       :2;     // CV_MOCOM_UDT_e
 */
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct TypeProperties(u16);
+
 impl TypeProperties {
     /// Indicates if a type is packed via `#pragma pack` or similar.
     pub fn packed(self) -> bool {
@@ -648,6 +651,7 @@ typedef enum CV_methodprop_e {
 */
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct FieldAttributes(u16);
+
 impl FieldAttributes {
     #[inline]
     pub fn access(self) -> u8 {
@@ -702,6 +706,7 @@ typedef struct CV_funcattr_t {
 */
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct FunctionAttributes(u16);
+
 impl FunctionAttributes {
     pub fn calling_convention(self) -> u8 {
         (self.0 & 0xff) as u8

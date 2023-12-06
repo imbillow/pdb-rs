@@ -103,14 +103,14 @@ pub use self::primitive::{Indirection, PrimitiveKind, PrimitiveType};
 ///                 _ => { }
 ///             }
 ///
-///         },
+///         }
 ///         Ok(_) => {
 ///             // ignore everything that's not a class-like type
-///         },
+///         }
 ///         Err(pdb::Error::UnimplementedTypeKind(_)) => {
 ///             // found an unhandled type record
 ///             // this probably isn't fatal in most use cases
-///         },
+///         }
 ///         Err(e) => {
 ///             // other error, probably is worth failing
 ///             return Err(e);
@@ -132,8 +132,8 @@ pub struct ItemInformation<'s, I> {
 }
 
 impl<'s, I> ItemInformation<'s, I>
-where
-    I: ItemIndex,
+    where
+        I: ItemIndex,
 {
     /// Parses `TypeInformation` from raw stream data.
     pub(crate) fn parse(stream: Stream<'s>) -> Result<Self> {
@@ -207,13 +207,15 @@ const PRIMITIVE_TYPE: &[u8] = b"\xff\xff";
 /// Depending on the stream, this can either be a [`Type`] or [`Id`].
 #[derive(Copy, Clone, PartialEq)]
 pub struct Item<'t, I> {
+    pub offset: usize,
+    pub length: usize,
     index: I,
     data: &'t [u8],
 }
 
 impl<'t, I> Item<'t, I>
-where
-    I: ItemIndex,
+    where
+        I: ItemIndex,
 {
     /// Returns this item's index.
     ///
@@ -249,8 +251,8 @@ where
 }
 
 impl<'t, I> fmt::Debug for Item<'t, I>
-where
-    I: ItemIndex,
+    where
+        I: ItemIndex,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -320,8 +322,8 @@ pub struct ItemFinder<'t, I> {
 }
 
 impl<'t, I> ItemFinder<'t, I>
-where
-    I: ItemIndex,
+    where
+        I: ItemIndex,
 {
     fn new(info: &'t ItemInformation<'_, I>, shift: u8) -> Self {
         // maximum index is the highest index + 1.
@@ -397,6 +399,8 @@ where
         let index: u32 = index.into();
         if index < self.minimum_index {
             return Ok(Item {
+                offset: 0,
+                length: 0,
                 index: I::from(index),
                 data: PRIMITIVE_TYPE,
             });
@@ -424,6 +428,8 @@ where
             let length = buf.parse_u16()?;
 
             Ok(Item {
+                offset: *pos as usize,
+                length: length.into(),
                 index: I::from(index),
                 data: buf.take(length as usize)?,
             })
@@ -448,8 +454,8 @@ pub struct ItemIter<'t, I> {
 }
 
 impl<'t, I> FallibleIterator for ItemIter<'t, I>
-where
-    I: ItemIndex,
+    where
+        I: ItemIndex,
 {
     type Item = Item<'t, I>;
     type Error = Error;
@@ -461,6 +467,7 @@ where
         }
 
         // read the length of the next type
+        let offset = self.buf.pos();
         let length = self.buf.parse_u16()? as usize;
 
         // validate
@@ -477,6 +484,8 @@ where
 
         // Done
         Ok(Some(Item {
+            offset,
+            length,
             index: I::from(index),
             data: type_buf,
         }))
