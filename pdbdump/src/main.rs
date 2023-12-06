@@ -1,48 +1,52 @@
 use std::fs::File;
 use clap::Parser;
 
-use pdb::{AddressMap, FallibleIterator, ItemFinder, PDB, PdbInternalSectionOffset, SymbolTable, TypeIndex, TypeInformation};
+use pdb::{AddressMap, FallibleIterator, ItemFinder, PDB, PdbInternalSectionOffset, SymbolTable, TypeIndex};
 
-struct DumpContext<'a, 'b> {
-    pdb: &'a mut PDB<'b, File>,
-    symbol_table: &'a SymbolTable<'b>,
-    address_map: &'a AddressMap<'b>,
+struct DumpContext<'a, 's> {
+    pdb: &'a mut PDB<'s, File>,
+    symbol_table: &'a SymbolTable<'s>,
+    address_map: &'a AddressMap<'s>,
     tpi_finder: &'a ItemFinder<'a, TypeIndex>,
     opt: &'a Args,
 }
 
-impl<'a, 'b> DumpContext<'a, 'b> {
+impl<'a, 's> DumpContext<'a, 's> {
     fn print_row(&self, offset: PdbInternalSectionOffset, kind: &str, name: pdb::RawString<'_>) {
-        println!(
-            "{:x}\t{:x}\t{}\t{}",
+        print!(
+            "\t{:x}\t{:x}\t{}\t{}",
             offset.section, offset.offset, kind, name
         );
     }
 
     fn print_symbol(&self, symbol: &pdb::Symbol<'_>) -> pdb::Result<()> {
+        println!("#0x{:x}: k=0x{:x}", symbol.index().0, symbol.raw_kind());
         match symbol.parse()? {
-            // pdb::SymbolData::Public(data) => {
-            //     self.print_row(data.offset, "function", data.name);
-            //     if let Some(rva) = data.offset.to_rva(&self.address_map) {
-            //         println!("\t\tRVA:{}", rva);
-            //     }
-            // }
-            // pdb::SymbolData::Procedure(data) => {
-            //     self.print_row(data.offset, "function", data.name);
-            //     if let Some(rva) = data.offset.to_rva(&self.address_map) {
-            //         println!("\t\tRVA:{}", rva);
-            //     }
-            // }
-            pdb::SymbolData::Data(data) => {
-                if self.opt.variables {
-                    self.print_row(data.offset, "data", data.name);
-
+            pdb::SymbolData::Public(data) => {
+                if self.opt.functions {}
+                self.print_row(data.offset, "function", data.name);
+                if let Some(rva) = data.offset.to_rva(&self.address_map) {
+                    println!(" RVA:{}", rva);
+                }
+            }
+            pdb::SymbolData::Procedure(data) => {
+                if self.opt.functions {
+                    self.print_row(data.offset, "function", data.name);
                     if let Some(rva) = data.offset.to_rva(&self.address_map) {
-                        println!("\t\tRVA:{}", rva);
+                        println!(" RVA:{}", rva);
                     }
                 }
             }
-            _ => {
+            pdb::SymbolData::Data(data) => {
+                if self.opt.variables {
+                    self.print_row(data.offset, "data", data.name);
+                    if let Some(rva) = data.offset.to_rva(&self.address_map) {
+                        println!(" RVA:{}", rva);
+                    }
+                }
+            }
+            x => {
+                println!("\t{:?}", x);
                 // ignore everything else
             }
         }
@@ -51,12 +55,10 @@ impl<'a, 'b> DumpContext<'a, 'b> {
     }
 
     fn walk_symbols(&self, mut symbols: pdb::SymbolIter<'_>) -> pdb::Result<()> {
-        println!("segment\toffset\tkind\tname");
-
         while let Some(symbol) = symbols.next()? {
             match self.print_symbol(&symbol) {
                 Ok(_) => (),
-                Err(e) => ()
+                Err(_) => ()
             }
         }
 
@@ -83,12 +85,8 @@ impl<'a, 'b> DumpContext<'a, 'b> {
             tpi_finder.update(&tpii);
             if opt.types {
                 let typ = tp.parse()?;
-                print!("#0x{:x}: ", tp.index().0);
-                if let Some(name) = typ.name() {
-                    println!("{:?}", name)
-                } else {
-                    println!("{:?}", typ)
-                }
+                print!("#0x{:x}: knd=0x{:x}, pos=0x{:x}, len=0x{:x}:", tp.index().0, tp.raw_kind(), tp.offset, tp.length);
+                println!("{:?}", typ)
             }
         }
 
@@ -101,25 +99,25 @@ impl<'a, 'b> DumpContext<'a, 'b> {
         };
 
 
-        if opt.variables {
+        if opt.variables || opt.functions {
             println!("Global symbols:");
             ctx.walk_symbols(ctx.symbol_table.iter())?;
         }
 
-        if opt.modules {
-            println!("Module private symbols:");
-            while let Some(module) = modules.next()? {
-                println!("Module: {}", module.object_file_name());
-                let info = match ctx.pdb.module_info(&module)? {
-                    Some(info) => info,
-                    None => {
-                        println!("  no module info");
-                        continue;
-                    }
-                };
-                ctx.walk_symbols(info.symbols()?)?;
-            }
+
+        println!("Module private symbols:");
+        while let Some(module) = modules.next()? {
+            println!("Module: {}", module.object_file_name());
+            let info = match ctx.pdb.module_info(&module)? {
+                Some(info) => info,
+                None => {
+                    println!("  no module info");
+                    continue;
+                }
+            };
+            ctx.walk_symbols(info.symbols()?)?;
         }
+
 
         Ok(())
     }
@@ -134,6 +132,8 @@ struct Args {
     variables: bool,
     #[arg(short, long)]
     modules: bool,
+    #[arg(short, long)]
+    functions: bool,
     filename: String,
 }
 
